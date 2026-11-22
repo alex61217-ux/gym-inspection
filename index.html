@@ -361,10 +361,11 @@ async function initFirebase() {
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
-    const db = getFirestore(app);
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    state.db = getFirestore(app);
 
     await signInAnonymously(auth);
-        }
 
         onAuthStateChanged(auth, (user) => {
           if (user) {
