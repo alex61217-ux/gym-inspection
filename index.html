@@ -343,25 +343,27 @@
       else dot.className += 'bg-slate-400';
     }
 
-    async function initFirebase() {
-      try {
-        if (typeof __firebase_config === 'undefined' || !__firebase_config) {
-          setSyncStatus('offline', '本機儲存模式（未設定雲端資料庫）');
-          subscribeToDate(state.date);
-          return;
-        }
+async function initFirebase() {
+  try {
+    const firebaseConfig = {
+      apiKey: "AIzaSyB6sL2VRxoizIbbLqX0hrx3G0YZQyKRTBs",
+      authDomain: "gym-inspection.firebaseapp.com",
+      databaseURL: "https://gym-inspection-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "gym-inspection",
+      storageBucket: "gym-inspection.firebasestorage.app",
+      messagingSenderId: "492275565622",
+      appId: "1:492275565622:web:f8683fbd8e9e26b2de0497",
+      measurementId: "G-X4BTF7CZ4X"
+    };
 
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        state.db = getFirestore(app);
+    const appId = "gym-inspection-app";
+    state.appId = appId;
 
-        setSyncStatus('syncing', '正在建立雲端連線...');
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
 
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
+    await signInAnonymously(auth);
         }
 
         onAuthStateChanged(auth, (user) => {
