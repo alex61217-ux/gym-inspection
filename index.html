@@ -28,7 +28,6 @@
       color: #0f172a;
       overscroll-behavior-y: contain;
     }
-    /* Hide scrollbar for horizontal pill lists */
     .no-scrollbar::-webkit-scrollbar {
       display: none;
     }
@@ -36,7 +35,6 @@
       -ms-overflow-style: none;
       scrollbar-width: none;
     }
-    /* Custom checkbox animation */
     .check-btn {
       transition: all 0.14s cubic-bezier(0.4, 0, 0.2, 1);
     }
@@ -60,10 +58,10 @@
           </div>
           <div class="min-w-0">
             <h1 class="text-base sm:text-lg font-bold text-slate-900 truncate leading-tight">健身房器材巡檢系統</h1>
-            <div class="flex items-center gap-1.5 mt-0.5">
+            <button id="btnCloudConfig" type="button" class="flex items-center gap-1.5 mt-0.5 text-left hover:opacity-80 transition" title="點擊查看雲端連線或權限修復說明">
               <span id="syncDot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-              <span id="syncText" class="text-xs font-medium text-slate-500 truncate">正在連線雲端...</span>
-            </div>
+              <span id="syncText" class="text-xs font-medium text-slate-500 truncate underline decoration-dotted underline-offset-2">正在連線雲端...</span>
+            </button>
           </div>
         </div>
 
@@ -180,7 +178,7 @@
       </div>
     </div>
 
-    <!-- Quick Jump Pills for Weight Training (Only shown on weight tab) -->
+    <!-- Quick Jump Pills for Weight Training -->
     <div id="weightJumpBar" class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-2 mb-2">
       <button type="button" data-jump="ALL" class="jump-pill shrink-0 h-8 px-3 rounded-lg text-xs font-bold bg-blue-600 text-white">全部 (162)</button>
       <button type="button" data-jump="W01-W50" class="jump-pill shrink-0 h-8 px-3 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700">W01–W50</button>
@@ -191,9 +189,7 @@
     </div>
 
     <!-- Equipment Cards Container -->
-    <div id="cardsContainer" class="space-y-3">
-      <!-- Cards rendered dynamically -->
-    </div>
+    <div id="cardsContainer" class="space-y-3"></div>
 
     <!-- Empty State -->
     <div id="emptyState" class="hidden text-center py-12 bg-white rounded-2xl border border-slate-200">
@@ -262,6 +258,40 @@
     </div>
   </div>
 
+  <!-- Firebase Cloud Config Modal -->
+  <div id="cloudConfigModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-xl border border-slate-100 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-base font-bold text-slate-900">雲端同步設定與權限修復 (Firebase)</h3>
+        <button id="closeCloudModal" type="button" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center font-bold">✕</button>
+      </div>
+      <div id="permissionHelpBox" class="hidden mb-3 rounded-xl bg-rose-50 border border-rose-200 p-3 text-xs text-rose-900 space-y-1.5">
+        <div class="font-bold text-rose-700">⚠️ 偵測到權限不足或匿名登入未啟用</div>
+        <p>系統已自動保留本機儲存功能，不影響現場勾選。若需啟用雲端同步，請至 Firebase Console 確認：</p>
+        <ol class="list-decimal pl-4 space-y-1">
+          <li><strong>Authentication → Sign-in method</strong>：啟用 <strong>Anonymous（匿名）</strong> 登入。</li>
+          <li><strong>Firestore Database → Rules</strong>：發佈允許已驗證連線讀寫的規則：</li>
+        </ol>
+        <pre class="bg-slate-900 text-emerald-300 p-2 rounded-lg text-[11px] font-mono overflow-x-auto select-all">rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /artifacts/{appId}/public/data/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}</pre>
+      </div>
+      <p class="text-xs text-slate-600 leading-relaxed mb-3">
+        若需更換或自訂 Firebase 專案設定，可將 <code class="bg-slate-100 px-1 rounded">firebaseConfig</code> JSON 貼在下方後儲存：
+      </p>
+      <textarea id="firebaseConfigInput" rows="5" placeholder='{"apiKey": "...", "authDomain": "...", "projectId": "...", "storageBucket": "...", "messagingSenderId": "...", "appId": "..."}' class="w-full p-3 rounded-xl bg-slate-50 border border-slate-300 text-xs font-mono text-slate-800 focus:outline-none focus:border-blue-500 mb-3"></textarea>
+      <div class="grid grid-cols-2 gap-2">
+        <button id="clearCloudConfigBtn" type="button" class="h-10 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold">清除自訂設定</button>
+        <button id="saveCloudConfigBtn" type="button" class="h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">儲存並重新連線</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification -->
   <div id="toastBox" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-lg opacity-0 pointer-events-none transition-opacity duration-200 whitespace-nowrap">
     提示訊息
@@ -269,41 +299,37 @@
 
   <!-- Firebase & Application Logic -->
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, setDoc, onSnapshot, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    // ==========================================
-    // 1. EXACT EQUIPMENT LISTS FROM SPREADSHEET
-    // ==========================================
     const BASE_WEIGHT_IDS = (() => {
       const list = [];
       for (let i = 1; i <= 92; i++) list.push(`W${String(i).padStart(2, '0')}`);
       for (let i = 101; i <= 133; i++) list.push(`W${i}`);
       for (let i = 141; i <= 168; i++) list.push(`W${i}`);
       for (let i = 171; i <= 179; i++) list.push(`W${i}`);
-      return list; // Base Total: 162
+      return list;
     })();
 
     const BASE_SPIN_IDS = (() => {
       const list = ['教練車'];
       for (let i = 1; i <= 39; i++) list.push(String(i));
       list.push('預備車');
-      return list; // Base Total: 41
+      return list;
     })();
 
     const BASE_CARDIO_IDS = (() => {
       const list = [];
       for (let i = 1; i <= 98; i++) list.push(String(i));
-      return list; // Base Total: 98
+      return list;
     })();
 
-    // Base Treadmill IDs that require the extra "跑帶停止" sticker check
     const BASE_TREADMILL_SET = new Set([
-      ...Array.from({ length: 20 }, (_, i) => String(i + 1)), // 1-20
+      ...Array.from({ length: 20 }, (_, i) => String(i + 1)),
       '22',
-      ...Array.from({ length: 12 }, (_, i) => String(i + 27)), // 27-38
-      ...Array.from({ length: 8 }, (_, i) => String(i + 53)), // 53-60
+      ...Array.from({ length: 12 }, (_, i) => String(i + 27)),
+      ...Array.from({ length: 8 }, (_, i) => String(i + 53)),
     ]);
 
     const WEIGHT_LABELS = ['器材編號', '資產編號', '貼心小提醒', '使用說明書'];
@@ -322,9 +348,6 @@
       cardio: '心肺器材區',
     };
 
-    // ==========================================
-    // 2. APPLICATION STATE
-    // ==========================================
     function getTodayDateString() {
       const now = new Date();
       const offset = now.getTimezoneOffset() * 60000;
@@ -338,26 +361,13 @@
       onlyIssues: false,
       weightRange: 'ALL',
       inspector: '',
-      // Data structure: { weight: { [id]: record }, spin: { [id]: record }, cardio: { [id]: record } }
-      records: {
-        weight: {},
-        spin: {},
-        cardio: {},
-      },
-      // Custom added equipment per category: { weight: ['W180'], spin: ['40'], cardio: [{ id: '99', isTreadmill: true }] }
-      customMachines: {
-        weight: [],
-        spin: [],
-        cardio: [],
-      },
+      records: { weight: {}, spin: {}, cardio: {} },
+      customMachines: { weight: [], spin: [], cardio: [] },
       confirmClearArm: false,
       confirmClearTimer: null,
-      meta: {
-        updatedAt: null,
-        updatedBy: '',
-      },
-      user: null,
+      meta: { updatedAt: null, updatedBy: '' },
       db: null,
+      cloudWritable: false,
       appId: typeof __app_id !== 'undefined' ? __app_id : 'gym-inspection-checklist',
       unsubscribe: null,
       unsubscribeCustom: null,
@@ -395,1339 +405,658 @@
       return Boolean(found && typeof found === 'object' && found.isTreadmill);
     }
 
-    // ==========================================
-    // 3. FIREBASE INITIALIZATION (ANONYMOUS AUTH)
-    // ==========================================
-    async function initFirebase() {
+    const DEFAULT_FIREBASE_CONFIG = {
+      apiKey: "AIzaSyB6sL2VRxoizIbbLqX0hrx3G0YZQyKRTBs",
+      authDomain: "gym-inspection.firebaseapp.com",
+      databaseURL: "https://gym-inspection-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "gym-inspection",
+      storageBucket: "gym-inspection.firebasestorage.app",
+      messagingSenderId: "492275565622",
+      appId: "1:492275565622:web:f8683fbd8e9e26b2de0497",
+      measurementId: "G-X4BTF7CZ4X"
+    };
+
+    function resolveFirebaseConfig() {
       try {
-        if (typeof __firebase_config === 'undefined') {
-          loadLocalFallback();
-          setSyncStatus('offline', '單機展示模式 (未偵測到雲端設定)');
-          renderAll();
-          return;
-        }
-
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        state.db = getFirestore(app);
-
-        setSyncStatus('syncing', '正在建立免登入雲端連線...');
-
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-
-        onAuthStateChanged(auth, (user) => {
-          if (user) {
-            state.user = user;
-            subscribeCustomMachines();
-            subscribeToDate(state.date);
-          }
-        });
-      } catch (err) {
-        console.error('Firebase init error:', err);
-        loadLocalFallback();
-        setSyncStatus('error', '雲端連線失敗，已切換至本機暫存');
-        renderAll();
-      }
-    }
-
-    function loadLocalFallback() {
-      try {
-        const rawCustom = localStorage.getItem(`${state.appId}_custom_machines`);
-        if (rawCustom) {
-          const parsed = JSON.parse(rawCustom);
-          state.customMachines = {
-            weight: Array.isArray(parsed.weight) ? parsed.weight : [],
-            spin: Array.isArray(parsed.spin) ? parsed.spin : [],
-            cardio: Array.isArray(parsed.cardio) ? parsed.cardio : [],
-          };
-        }
-        const rawRecs = localStorage.getItem(`${state.appId}_records_${state.date}`);
-        if (rawRecs) {
-          const parsedRec = JSON.parse(rawRecs);
-          state.records = {
-            weight: parsedRec.weight || {},
-            spin: parsedRec.spin || {},
-            cardio: parsedRec.cardio || {},
-          };
+        const saved = localStorage.getItem('gym_custom_firebase_config');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && parsed.apiKey) return parsed;
         }
       } catch (_) {}
-    }
-
-    function saveLocalFallback() {
-      try {
-        localStorage.setItem(`${state.appId}_custom_machines`, JSON.stringify(state.customMachines));
-        localStorage.setItem(`${state.appId}_records_${state.date}`, JSON.stringify(state.records));
-      } catch (_) {}
-    }
-
-    function setSyncStatus(status, text) {
-      const dot = document.getElementById('syncDot');
-      const label = document.getElementById('syncText');
-      label.textContent = text;
-      dot.className = 'w-2 h-2 rounded-full shrink-0 ';
-      if (status === 'synced') {
-        dot.className += 'bg-emerald-500';
-      } else if (status === 'syncing') {
-        dot.className += 'bg-amber-400 animate-pulse';
-      } else if (status === 'error') {
-        dot.className += 'bg-rose-500';
-      } else {
-        dot.className += 'bg-slate-400';
+      if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+        return JSON.parse(__firebase_config);
       }
+      if (DEFAULT_FIREBASE_CONFIG && DEFAULT_FIREBASE_CONFIG.apiKey) {
+        return DEFAULT_FIREBASE_CONFIG;
+      }
+      return null;
     }
 
-    // ==========================================
-    // 4. FIRESTORE REALTIME SYNC
-    // ==========================================
-    function subscribeCustomMachines() {
-      if (state.unsubscribeCustom) {
-        state.unsubscribeCustom();
-        state.unsubscribeCustom = null;
-      }
-      if (!state.db || !state.user) return;
-
-      const customDocRef = doc(state.db, 'artifacts', state.appId, 'public', 'data', 'settings', 'customMachines');
-      state.unsubscribeCustom = onSnapshot(
-        customDocRef,
-        (docSnap) => {
-          if (docSnap.exists()) {
-            const data = docSnap.data() || {};
-            state.customMachines = {
-              weight: Array.isArray(data.weight) ? data.weight : [],
-              spin: Array.isArray(data.spin) ? data.spin : [],
-              cardio: Array.isArray(data.cardio) ? data.cardio : [],
-            };
-            saveLocalFallback();
-            renderAll();
-          }
-        },
-        (err) => {
-          console.error('Custom machines snapshot error:', err);
-        }
-      );
-    }
-
-    async function saveCustomMachines() {
-      saveLocalFallback();
-      if (!state.db || !state.user) {
-        renderAll();
-        return;
-      }
-      try {
-        setSyncStatus('syncing', '正在同步新增器材清單...');
-        const customDocRef = doc(state.db, 'artifacts', state.appId, 'public', 'data', 'settings', 'customMachines');
-        await setDoc(
-          customDocRef,
-          {
-            weight: state.customMachines.weight,
-            spin: state.customMachines.spin,
-            cardio: state.customMachines.cardio,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-        setSyncStatus('synced', '雲端已即時同步');
-      } catch (err) {
-        console.error('Save custom machines error:', err);
-        setSyncStatus('error', '新增器材雲端同步失敗');
-        showToast('同步失敗，已暫存本機');
-      }
-    }
-
-    function subscribeToDate(dateStr) {
+    function cleanupListeners() {
       if (state.unsubscribe) {
         state.unsubscribe();
         state.unsubscribe = null;
       }
+      if (state.unsubscribeCustom) {
+        state.unsubscribeCustom();
+        state.unsubscribeCustom = null;
+      }
+    }
 
-      // Reset local records for the newly selected date before snapshot arrives
-      state.records = { weight: {}, spin: {}, cardio: {} };
-      state.meta = { updatedAt: null, updatedBy: '' };
+    async function initFirebase() {
+      cleanupListeners();
       loadLocalFallback();
       renderAll();
 
-      if (!state.db || !state.user) return;
-
-      setSyncStatus('syncing', `同步 ${dateStr} 資料中...`);
-
-      const colRef = collection(state.db, 'artifacts', state.appId, 'public', 'data', `inspections_${dateStr}`);
-
-      state.unsubscribe = onSnapshot(
-        colRef,
-        (snapshot) => {
-          const nextRecords = { weight: {}, spin: {}, cardio: {} };
-          let latestTime = null;
-          let latestBy = '';
-
-          snapshot.forEach((docSnap) => {
-            const docId = docSnap.id; // 'weight', 'spin', or 'cardio'
-            const data = docSnap.data();
-            if (nextRecords[docId]) {
-              nextRecords[docId] = data.items || {};
-            }
-            if (data.updatedAt && data.updatedAt.toDate) {
-              const dt = data.updatedAt.toDate();
-              if (!latestTime || dt > latestTime) {
-                latestTime = dt;
-                latestBy = data.updatedBy || '';
-              }
-            }
-          });
-
-          state.records = nextRecords;
-          state.meta = { updatedAt: latestTime, updatedBy: latestBy };
-          saveLocalFallback();
-          setSyncStatus('synced', '雲端已即時同步（免登入協作）');
-          renderAll();
-        },
-        (error) => {
-          console.error('Firestore snapshot error:', error);
-          setSyncStatus('error', '同步發生錯誤，請檢查網路');
-        }
-      );
-    }
-
-    // Immediate or debounced save per category document
-    function scheduleCategorySave(category, immediate = false) {
-      saveLocalFallback();
-      setSyncStatus('syncing', '正在同步至雲端...');
-      if (state.saveTimers[category]) {
-        clearTimeout(state.saveTimers[category]);
-      }
-
-      const executeSave = async () => {
-        if (!state.db || !state.user) {
-          setSyncStatus('offline', '單機模式已暫存');
+      try {
+        const firebaseConfig = resolveFirebaseConfig();
+        if (!firebaseConfig) {
+          state.cloudWritable = false;
+          setSyncStatus('offline', '單機模式（點此設定雲端同步）');
           return;
         }
-        try {
-          const docRef = doc(state.db, 'artifacts', state.appId, 'public', 'data', `inspections_${state.date}`, category);
-          await setDoc(
-            docRef,
-            {
-              date: state.date,
-              category,
-              items: state.records[category],
-              updatedAt: serverTimestamp(),
-              updatedBy: state.inspector.trim() || '巡檢人員',
-            },
-            { merge: false }
-          );
-          setSyncStatus('synced', '雲端已即時同步');
-        } catch (err) {
-          console.error('Save error:', err);
-          setSyncStatus('error', '儲存失敗，請重試');
-          showToast('同步失敗，請檢查網路連線');
-        }
-      };
 
-      if (immediate) {
-        executeSave();
-      } else {
-        state.saveTimers[category] = setTimeout(executeSave, 300);
+        setSyncStatus('syncing', '正在連線雲端...');
+        for (const existingApp of getApps()) {
+          await deleteApp(existingApp);
+        }
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        state.db = getFirestore(app);
+        state.cloudWritable = false;
+
+        await signInAnonymously(auth);
+        state.cloudWritable = true;
+        const permBox = document.getElementById('permissionHelpBox');
+        if (permBox) permBox.classList.add('hidden');
+        setSyncStatus('online', '雲端已即時同步');
+        subscribeToDateData(state.date);
+        subscribeToCustomMachines();
+      } catch (err) {
+        console.warn('Firebase init fallback to local:', err);
+        state.cloudWritable = false;
+        const permBox = document.getElementById('permissionHelpBox');
+        if (permBox) permBox.classList.remove('hidden');
+        if (err && (err.code === 'auth/admin-restricted-operation' || err.code === 'permission-denied')) {
+          setSyncStatus('offline', '雲端權限未開（本機正常運作・點此修復）');
+        } else {
+          setSyncStatus('offline', '雲端未連線（本機正常運作・點此設定）');
+        }
       }
     }
 
-    // ==========================================
-    // 5. DATA HELPERS & STATUS EVALUATION
-    // ==========================================
-    function getRecord(category, id) {
-      if (!state.records[category][id]) {
-        if (category === 'weight') {
-          state.records.weight[id] = {
-            fault: '',
-            leather: '',
-            handle: '',
-            labels: {},
-            repairTag: '',
-            note: '',
-            photoData: '',
-          };
-        } else if (category === 'spin') {
-          state.records.spin[id] = {
-            checks: {},
-            repairTag: '',
-          };
-        } else if (category === 'cardio') {
-          state.records.cardio[id] = {
-            status: {}, // { '耳機孔': '無' | '有', ... }
-            labels: {}, // { '器材編號': true (means issue V), ... }
-            repairTag: '',
-          };
+    function setSyncStatus(mode, text) {
+      const dot = document.getElementById('syncDot');
+      const label = document.getElementById('syncText');
+      if (label) label.textContent = text;
+      if (dot) {
+        dot.className = 'w-2 h-2 rounded-full ' + (
+          mode === 'online' ? 'bg-emerald-500' :
+          mode === 'syncing' ? 'bg-amber-400 animate-pulse' : 'bg-rose-500'
+        );
+      }
+    }
+
+    function getLocalStorageKey(dateStr) {
+      return `gym_equip_checklist_${dateStr}`;
+    }
+
+    function loadLocalFallback() {
+      try {
+        const raw = localStorage.getItem(getLocalStorageKey(state.date));
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          state.inspector = parsed.inspector || '';
+          state.records = parsed.records || { weight: {}, spin: {}, cardio: {} };
+          state.meta = parsed.meta || { updatedAt: null, updatedBy: '' };
+        } else {
+          state.inspector = '';
+          state.records = { weight: {}, spin: {}, cardio: {} };
+          state.meta = { updatedAt: null, updatedBy: '' };
         }
+        const customRaw = localStorage.getItem('gym_equip_custom_machines');
+        if (customRaw) {
+          state.customMachines = JSON.parse(customRaw);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+      const inspectorEl = document.getElementById('inspectorInput');
+      if (inspectorEl && document.activeElement !== inspectorEl) {
+        inspectorEl.value = state.inspector;
+      }
+    }
+
+    function saveLocalFallback() {
+      try {
+        localStorage.setItem(getLocalStorageKey(state.date), JSON.stringify({
+          inspector: state.inspector,
+          records: state.records,
+          meta: state.meta,
+        }));
+        localStorage.setItem('gym_equip_custom_machines', JSON.stringify(state.customMachines));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function subscribeToDateData(dateStr) {
+      if (state.unsubscribe) {
+        state.unsubscribe();
+        state.unsubscribe = null;
+      }
+      loadLocalFallback();
+      renderAll();
+
+      if (!state.db || !state.cloudWritable) return;
+      const docRef = doc(state.db, 'artifacts', state.appId, 'public', 'data', 'inspections', dateStr);
+      state.unsubscribe = onSnapshot(docRef, (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          state.inspector = data.inspector || '';
+          state.records = {
+            weight: (data.records && data.records.weight) || {},
+            spin: (data.records && data.records.spin) || {},
+            cardio: (data.records && data.records.cardio) || {},
+          };
+          state.meta = data.meta || { updatedAt: null, updatedBy: '' };
+          const inspectorEl = document.getElementById('inspectorInput');
+          if (inspectorEl && document.activeElement !== inspectorEl) {
+            inspectorEl.value = state.inspector;
+          }
+          saveLocalFallback();
+          renderAll();
+        }
+        setSyncStatus('online', '雲端已即時同步');
+      }, (err) => {
+        console.warn('Firestore read permission fallback:', err);
+        state.cloudWritable = false;
+        if (state.unsubscribe) {
+          state.unsubscribe();
+          state.unsubscribe = null;
+        }
+        const permBox = document.getElementById('permissionHelpBox');
+        if (permBox) permBox.classList.remove('hidden');
+        setSyncStatus('offline', '雲端權限不足（已存本機・點此修復）');
+      });
+    }
+
+    function subscribeToCustomMachines() {
+      if (state.unsubscribeCustom) {
+        state.unsubscribeCustom();
+        state.unsubscribeCustom = null;
+      }
+      if (!state.db || !state.cloudWritable) return;
+      const customRef = doc(state.db, 'artifacts', state.appId, 'public', 'data', 'settings', 'customMachines');
+      state.unsubscribeCustom = onSnapshot(customRef, (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          state.customMachines = {
+            weight: data.weight || [],
+            spin: data.spin || [],
+            cardio: data.cardio || [],
+          };
+          saveLocalFallback();
+          renderAll();
+        }
+      }, (err) => {
+        console.warn('Custom machines listener fallback:', err);
+        if (state.unsubscribeCustom) {
+          state.unsubscribeCustom();
+          state.unsubscribeCustom = null;
+        }
+      });
+    }
+
+    function scheduleSave() {
+      state.meta.updatedAt = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+      state.meta.updatedBy = state.inspector || '巡檢人員';
+      saveLocalFallback();
+      updateSummaryStats();
+
+      if (!state.db || !state.cloudWritable) return;
+      setSyncStatus('syncing', '正在同步至雲端...');
+      clearTimeout(state.saveTimers.main);
+      state.saveTimers.main = setTimeout(async () => {
+        try {
+          const docRef = doc(state.db, 'artifacts', state.appId, 'public', 'data', 'inspections', state.date);
+          await setDoc(docRef, {
+            date: state.date,
+            inspector: state.inspector,
+            records: state.records,
+            meta: state.meta,
+            updatedAt: serverTimestamp(),
+          }, { merge: true });
+          setSyncStatus('online', '雲端已即時同步');
+        } catch (err) {
+          console.warn('Save fallback to local:', err);
+          state.cloudWritable = false;
+          const permBox = document.getElementById('permissionHelpBox');
+          if (permBox) permBox.classList.remove('hidden');
+          setSyncStatus('offline', '雲端權限不足（已存本機・點此修復）');
+        }
+      }, 300);
+    }
+
+    async function saveCustomMachines() {
+      saveLocalFallback();
+      if (!state.db || !state.cloudWritable) return;
+      try {
+        const customRef = doc(state.db, 'artifacts', state.appId, 'public', 'data', 'settings', 'customMachines');
+        await setDoc(customRef, state.customMachines, { merge: true });
+      } catch (err) {
+        console.warn('Save custom machines fallback:', err);
+        state.cloudWritable = false;
+      }
+    }
+
+    function getRecord(category, id) {
+      if (!state.records[category]) state.records[category] = {};
+      if (!state.records[category][id]) {
+        state.records[category][id] = {
+          checks: {},
+          issueText: '',
+          checked: false,
+        };
       }
       return state.records[category][id];
     }
 
-    function evaluateMachine(category, id) {
-      const rec = state.records[category][id];
-      if (!rec) return { checked: false, hasIssue: false };
-
-      if (category === 'weight') {
-        const labels = rec.labels || {};
-        const checkedLabelsCount = WEIGHT_LABELS.filter((l) => !!labels[l]).length;
-        const hasTextIssue = Boolean(
-          (rec.fault && rec.fault.trim()) ||
-          (rec.leather && rec.leather.trim()) ||
-          (rec.handle && rec.handle.trim()) ||
-          (rec.repairTag && rec.repairTag.trim()) ||
-          (rec.note && rec.note.trim()) ||
-          rec.photoData
-        );
-        const checked = checkedLabelsCount > 0 || hasTextIssue;
-        return { checked, hasIssue: hasTextIssue };
-      }
-
-      if (category === 'spin') {
-        const checks = rec.checks || {};
-        const checkedCount = SPIN_ITEMS.filter((k) => !!checks[k]).length;
-        const hasIssue = Boolean(rec.repairTag && rec.repairTag.trim());
-        const checked = checkedCount > 0 || hasIssue;
-        return { checked, hasIssue };
-      }
-
-      if (category === 'cardio') {
-        const status = rec.status || {};
-        const labels = rec.labels || {};
-        const hasAnyStatus = CARDIO_STATUS_FIELDS.some((f) => status[f] === '無' || status[f] === '有');
-        const hasStatusIssue = CARDIO_STATUS_FIELDS.some((f) => status[f] === '有');
-        const hasLabelIssue = Object.values(labels).some((v) => v === true);
-        const hasRepairIssue = Boolean(rec.repairTag && rec.repairTag.trim());
-        const hasIssue = hasStatusIssue || hasLabelIssue || hasRepairIssue;
-        const checked = hasAnyStatus || hasIssue;
-        return { checked, hasIssue };
-      }
-
-      return { checked: false, hasIssue: false };
+    function isRecordChecked(category, id) {
+      const rec = state.records[category] && state.records[category][id];
+      if (!rec) return false;
+      if (rec.checked) return true;
+      if (rec.issueText && rec.issueText.trim() !== '') return true;
+      if (rec.checks && Object.values(rec.checks).some(Boolean)) return true;
+      return false;
     }
 
-    // Image compression helper so photos fit comfortably in Firestore document size limits
-    function compressImageFile(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const maxDim = 480;
-            let w = img.width;
-            let h = img.height;
-            if (w > h && w > maxDim) {
-              h = Math.round((h * maxDim) / w);
-              w = maxDim;
-            } else if (h > maxDim) {
-              w = Math.round((w * maxDim) / h);
-              h = maxDim;
-            }
-            canvas.width = w;
-            canvas.height = h;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, w, h);
-            resolve(canvas.toDataURL('image/jpeg', 0.65));
-          };
-          img.onerror = reject;
-          img.src = e.target.result;
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+    function hasRecordIssue(category, id) {
+      const rec = state.records[category] && state.records[category][id];
+      if (!rec) return false;
+      return Boolean(rec.issueText && rec.issueText.trim() !== '');
     }
 
-    // ==========================================
-    // 6. UI RENDERING
-    // ==========================================
     function updateSummaryStats() {
-      const weightIds = getCategoryIds('weight');
-      const spinIds = getCategoryIds('spin');
-      const cardioIds = getCategoryIds('cardio');
+      const wIds = getCategoryIds('weight');
+      const sIds = getCategoryIds('spin');
+      const cIds = getCategoryIds('cardio');
 
-      let wChecked = 0, wIssue = 0;
-      weightIds.forEach((id) => {
-        const ev = evaluateMachine('weight', id);
-        if (ev.checked) wChecked++;
-        if (ev.hasIssue) wIssue++;
-      });
+      const wDone = wIds.filter((id) => isRecordChecked('weight', id)).length;
+      const sDone = sIds.filter((id) => isRecordChecked('spin', id)).length;
+      const cDone = cIds.filter((id) => isRecordChecked('cardio', id)).length;
 
-      let sChecked = 0, sIssue = 0;
-      spinIds.forEach((id) => {
-        const ev = evaluateMachine('spin', id);
-        if (ev.checked) sChecked++;
-        if (ev.hasIssue) sIssue++;
-      });
+      const total = wIds.length + sIds.length + cIds.length;
+      const done = wDone + sDone + cDone;
+      const issues =
+        wIds.filter((id) => hasRecordIssue('weight', id)).length +
+        sIds.filter((id) => hasRecordIssue('spin', id)).length +
+        cIds.filter((id) => hasRecordIssue('cardio', id)).length;
 
-      let cChecked = 0, cIssue = 0;
-      cardioIds.forEach((id) => {
-        const ev = evaluateMachine('cardio', id);
-        if (ev.checked) cChecked++;
-        if (ev.hasIssue) cIssue++;
-      });
-
-      const totalMachines = weightIds.length + spinIds.length + cardioIds.length;
-      const totalChecked = wChecked + sChecked + cChecked;
-      const totalIssues = wIssue + sIssue + cIssue;
-      const pct = totalMachines > 0 ? Math.round((totalChecked / totalMachines) * 100) : 0;
-
-      const totalCountEl = document.getElementById('totalCheckedCount');
-      if (totalCountEl && totalCountEl.parentElement) {
-        totalCountEl.parentElement.innerHTML = `今日總進度：<span id="totalCheckedCount" class="text-blue-600 font-bold">${totalChecked}</span> / ${totalMachines} 台`;
+      const totalCheckedEl = document.getElementById('totalCheckedCount');
+      if (totalCheckedEl && totalCheckedEl.parentElement) {
+        totalCheckedEl.parentElement.innerHTML = `今日總進度：<span id="totalCheckedCount" class="text-blue-600 font-bold">${done}</span> / ${total} 台`;
       }
-      document.getElementById('totalIssueCount').textContent = totalIssues;
-      document.getElementById('progressBar').style.width = `${pct}%`;
+      const totalIssueEl = document.getElementById('totalIssueCount');
+      if (totalIssueEl) totalIssueEl.textContent = String(issues);
 
-      document.getElementById('badge-weight').textContent = `${wChecked}/${weightIds.length}`;
-      document.getElementById('badge-spin').textContent = `${sChecked}/${spinIds.length}`;
-      document.getElementById('badge-cardio').textContent = `${cChecked}/${cardioIds.length}`;
+      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+      const bar = document.getElementById('progressBar');
+      if (bar) bar.style.width = `${pct}%`;
+
+      const bw = document.getElementById('badge-weight');
+      const bs = document.getElementById('badge-spin');
+      const bc = document.getElementById('badge-cardio');
+      if (bw) bw.textContent = `${wDone}/${wIds.length}`;
+      if (bs) bs.textContent = `${sDone}/${sIds.length}`;
+      if (bc) bc.textContent = `${cDone}/${cIds.length}`;
 
       const updatedEl = document.getElementById('lastUpdatedLabel');
-      if (state.meta.updatedAt) {
-        const hh = String(state.meta.updatedAt.getHours()).padStart(2, '0');
-        const mm = String(state.meta.updatedAt.getMinutes()).padStart(2, '0');
-        const who = state.meta.updatedBy ? ` (${state.meta.updatedBy})` : '';
-        updatedEl.textContent = `最後更新 ${hh}:${mm}${who}`;
-      } else {
-        updatedEl.textContent = '尚無雲端紀錄';
+      if (updatedEl) {
+        updatedEl.textContent = state.meta.updatedAt ? `更新於 ${state.meta.updatedAt}` : '';
       }
-    }
-
-    function filterIdsForActiveTab() {
-      const ids = getCategoryIds(state.activeTab);
-      const q = state.searchQuery.trim().toLowerCase();
-
-      return ids.filter((id) => {
-        // Weight range filter
-        if (state.activeTab === 'weight' && state.weightRange !== 'ALL' && !q) {
-          if (state.weightRange === 'CUSTOM') {
-            if (!isCustomMachine('weight', id)) return false;
-          } else {
-            const num = parseInt(id.replace(/^W/i, ''), 10);
-            if (isNaN(num)) return false;
-            if (state.weightRange === 'W01-W50' && !(num >= 1 && num <= 50)) return false;
-            if (state.weightRange === 'W51-W92' && !(num >= 51 && num <= 92)) return false;
-            if (state.weightRange === 'W101-W133' && !(num >= 101 && num <= 133)) return false;
-            if (state.weightRange === 'W141-W179' && !(num >= 141 && num <= 179)) return false;
-          }
-        }
-
-        // Search query
-        if (q && !id.toLowerCase().includes(q)) {
-          return false;
-        }
-
-        // Issues only filter
-        if (state.onlyIssues) {
-          const ev = evaluateMachine(state.activeTab, id);
-          if (!ev.hasIssue) return false;
-        }
-
-        return true;
-      });
-    }
-
-    function escapeHtml(str) {
-      if (!str) return '';
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-    }
-
-    function renderWeightCard(id) {
-      const rec = state.records.weight[id] || { fault: '', leather: '', handle: '', labels: {}, repairTag: '', note: '', photoData: '' };
-      const labels = rec.labels || {};
-      const ev = evaluateMachine('weight', id);
-      const allLabelsChecked = WEIGHT_LABELS.every((l) => !!labels[l]);
-      const isCustom = isCustomMachine('weight', id);
-
-      const borderClass = ev.hasIssue
-        ? 'border-rose-300 bg-rose-50/40 ring-1 ring-rose-200'
-        : ev.checked
-        ? 'border-emerald-300 bg-white'
-        : 'border-slate-200 bg-white';
-
-      const statusBadge = ev.hasIssue
-        ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700">有異常</span>`
-        : ev.checked
-        ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700">✓ 已確認</span>`
-        : `<span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-500">未檢查</span>`;
-
-      const customTag = isCustom
-        ? `<span class="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">新增</span>`
-        : '';
-
-      const labelButtonsHtml = WEIGHT_LABELS.map((labelName) => {
-        const checked = !!labels[labelName];
-        return `
-          <button type="button"
-            data-action="toggle-weight-label"
-            data-id="${escapeHtml(id)}"
-            data-key="${labelName}"
-            class="check-btn h-11 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-between gap-1.5 ${
-              checked
-                ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
-                : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-            }">
-            <span class="truncate">${labelName}</span>
-            <span class="w-5 h-5 rounded-md flex items-center justify-center text-xs font-black shrink-0 ${
-              checked ? 'bg-white/20 text-white' : 'bg-white border border-slate-300 text-transparent'
-            }">V</span>
-          </button>
-        `;
-      }).join('');
-
-      return `
-        <div class="rounded-2xl border ${borderClass} p-3.5 shadow-2xs transition-colors" data-card-id="${escapeHtml(id)}">
-          <!-- Card Header -->
-          <div class="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
-            <div class="flex items-center gap-1.5 flex-wrap">
-              <span class="text-base font-extrabold text-slate-900 tracking-tight">${escapeHtml(id)}</span>
-              ${customTag}
-              ${statusBadge}
-            </div>
-            <div class="flex items-center gap-1.5">
-              ${isCustom ? `
-                <button type="button" data-action="delete-custom-machine" data-id="${escapeHtml(id)}"
-                  class="h-9 px-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition" title="移除此自訂器材">
-                  刪除
-                </button>
-              ` : ''}
-              <button type="button"
-                data-action="weight-all-v"
-                data-id="${escapeHtml(id)}"
-                class="h-9 px-3 rounded-xl text-xs font-bold transition flex items-center gap-1 ${
-                  allLabelsChecked
-                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                    : 'bg-blue-50 text-blue-700 border border-blue-200 active:bg-blue-100'
-                }">
-                <span>${allLabelsChecked ? '✓ 標籤已全選' : '全選標籤 V'}</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Sticker Labels Grid (V confirmation) -->
-          <div class="mt-2.5">
-            <div class="text-[11px] font-bold text-slate-500 mb-1.5">貼紙標籤確認（沒問題請打 V）</div>
-            <div class="grid grid-cols-2 gap-2">
-              ${labelButtonsHtml}
-            </div>
-          </div>
-
-          <!-- Condition Inputs: 器材故障 / 皮革破裂 / 把手 -->
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
-            <div>
-              <label class="block text-[11px] font-bold text-slate-600 mb-1">器材故障</label>
-              <input type="text"
-                data-action="input-weight"
-                data-id="${id}"
-                data-field="fault"
-                value="${escapeHtml(rec.fault)}"
-                placeholder="正常留白 / 填寫異常"
-                class="w-full h-10 px-3 rounded-xl border text-xs font-medium focus:outline-none focus:border-blue-500 ${
-                  rec.fault ? 'border-rose-400 bg-rose-50 text-rose-900 font-bold' : 'border-slate-200 bg-slate-50 text-slate-800'
-                }" />
-            </div>
-            <div>
-              <label class="block text-[11px] font-bold text-slate-600 mb-1">皮革破裂</label>
-              <input type="text"
-                data-action="input-weight"
-                data-id="${id}"
-                data-field="leather"
-                value="${escapeHtml(rec.leather)}"
-                placeholder="正常留白 / 填寫破裂處"
-                class="w-full h-10 px-3 rounded-xl border text-xs font-medium focus:outline-none focus:border-blue-500 ${
-                  rec.leather ? 'border-rose-400 bg-rose-50 text-rose-900 font-bold' : 'border-slate-200 bg-slate-50 text-slate-800'
-                }" />
-            </div>
-            <div>
-              <label class="block text-[11px] font-bold text-slate-600 mb-1">把手</label>
-              <input type="text"
-                data-action="input-weight"
-                data-id="${id}"
-                data-field="handle"
-                value="${escapeHtml(rec.handle)}"
-                placeholder="正常留白 / 填寫異常"
-                class="w-full h-10 px-3 rounded-xl border text-xs font-medium focus:outline-none focus:border-blue-500 ${
-                  rec.handle ? 'border-rose-400 bg-rose-50 text-rose-900 font-bold' : 'border-slate-200 bg-slate-50 text-slate-800'
-                }" />
-            </div>
-          </div>
-
-          <!-- Repair Tag + Note & Photo -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2.5">
-            <div>
-              <label class="block text-[11px] font-bold text-slate-600 mb-1">維修牌號碼</label>
-              <input type="text"
-                data-action="input-weight"
-                data-id="${id}"
-                data-field="repairTag"
-                value="${escapeHtml(rec.repairTag)}"
-                placeholder="有掛牌請填編號..."
-                class="w-full h-10 px-3 rounded-xl border text-xs font-medium focus:outline-none focus:border-blue-500 ${
-                  rec.repairTag ? 'border-amber-400 bg-amber-50 text-amber-900 font-bold' : 'border-slate-200 bg-slate-50 text-slate-800'
-                }" />
-            </div>
-            <div>
-              <label class="block text-[11px] font-bold text-slate-600 mb-1">異常備註與拍照上傳</label>
-              <div class="flex items-center gap-1.5">
-                <input type="text"
-                  data-action="input-weight"
-                  data-id="${id}"
-                  data-field="note"
-                  value="${escapeHtml(rec.note)}"
-                  placeholder="補充異常狀況..."
-                  class="w-full h-10 px-3 rounded-xl border border-slate-200 bg-slate-50 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-500" />
-                <label class="h-10 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center shrink-0 cursor-pointer" title="拍照或上傳照片">
-                  <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  <input type="file" accept="image/*" capture="environment" class="hidden" data-action="photo-weight" data-id="${id}" />
-                </label>
-              </div>
-            </div>
-          </div>
-
-          ${
-            rec.photoData
-              ? `<div class="mt-2.5 flex items-center gap-3 bg-slate-100 p-2 rounded-xl border border-slate-200">
-                  <img src="${rec.photoData}" alt="異常照片" class="w-16 h-16 object-cover rounded-lg border border-slate-300" />
-                  <div class="flex-1 min-w-0">
-                    <p class="text-xs font-bold text-slate-700">已附加異常照片</p>
-                    <p class="text-[11px] text-slate-500">已壓縮並同步至雲端</p>
-                  </div>
-                  <button type="button" data-action="remove-photo" data-id="${id}" class="h-8 px-2.5 rounded-lg bg-rose-100 text-rose-700 text-xs font-bold">移除</button>
-                </div>`
-              : ''
-          }
-        </div>
-      `;
-    }
-
-    function renderSpinCard(id) {
-      const rec = state.records.spin[id] || { checks: {}, repairTag: '' };
-      const checks = rec.checks || {};
-      const ev = evaluateMachine('spin', id);
-      const allChecked = SPIN_ITEMS.every((k) => !!checks[k]);
-      const isCustom = isCustomMachine('spin', id);
-
-      const borderClass = ev.hasIssue
-        ? 'border-rose-300 bg-rose-50/40 ring-1 ring-rose-200'
-        : ev.checked
-        ? 'border-emerald-300 bg-white'
-        : 'border-slate-200 bg-white';
-
-      const displayTitle = id === '教練車' || id === '預備車' ? id : `飛輪 #${id}`;
-
-      const statusBadge = ev.hasIssue
-        ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700">有維修問題</span>`
-        : ev.checked
-        ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700">✓ 已確認</span>`
-        : `<span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-500">未檢查</span>`;
-
-      const customTag = isCustom
-        ? `<span class="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">新增</span>`
-        : '';
-
-      const itemsHtml = SPIN_ITEMS.map((item) => {
-        const checked = !!checks[item];
-        return `
-          <button type="button"
-            data-action="toggle-spin-check"
-            data-id="${escapeHtml(id)}"
-            data-key="${item}"
-            class="check-btn h-11 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-between gap-1 ${
-              checked
-                ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
-                : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-            }">
-            <span class="truncate">${item}</span>
-            <span class="w-5 h-5 rounded-md flex items-center justify-center text-xs font-black shrink-0 ${
-              checked ? 'bg-white/20 text-white' : 'bg-white border border-slate-300 text-transparent'
-            }">V</span>
-          </button>
-        `;
-      }).join('');
-
-      return `
-        <div class="rounded-2xl border ${borderClass} p-3.5 shadow-2xs transition-colors" data-card-id="${escapeHtml(id)}">
-          <div class="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
-            <div class="flex items-center gap-1.5 flex-wrap">
-              <span class="text-base font-extrabold text-slate-900">${escapeHtml(displayTitle)}</span>
-              ${customTag}
-              ${statusBadge}
-            </div>
-            <div class="flex items-center gap-1.5">
-              ${isCustom ? `
-                <button type="button" data-action="delete-custom-machine" data-id="${escapeHtml(id)}"
-                  class="h-9 px-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition" title="移除此自訂器材">
-                  刪除
-                </button>
-              ` : ''}
-              <button type="button"
-                data-action="spin-all-v"
-                data-id="${escapeHtml(id)}"
-                class="h-9 px-3 rounded-xl text-xs font-bold transition ${
-                  allChecked
-                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                    : 'bg-blue-50 text-blue-700 border border-blue-200 active:bg-blue-100'
-                }">
-                ${allChecked ? '✓ 已全部打 V' : '全部打 V'}
-              </button>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2.5">
-            ${itemsHtml}
-          </div>
-
-          <div class="mt-3">
-            <label class="block text-[11px] font-bold text-slate-600 mb-1">維修牌號碼與問題</label>
-            <input type="text"
-              data-action="input-spin-repair"
-              data-id="${id}"
-              value="${escapeHtml(rec.repairTag)}"
-              placeholder="正常留白；若有異常請填寫維修牌號碼與問題..."
-              class="w-full h-10 px-3 rounded-xl border text-xs font-medium focus:outline-none focus:border-blue-500 ${
-                rec.repairTag ? 'border-rose-400 bg-rose-50 text-rose-900 font-bold' : 'border-slate-200 bg-slate-50 text-slate-800'
-              }" />
-          </div>
-        </div>
-      `;
-    }
-
-    function renderCardioCard(id) {
-      const rec = state.records.cardio[id] || { status: {}, labels: {}, repairTag: '' };
-      const status = rec.status || {};
-      const labels = rec.labels || {};
-      const ev = evaluateMachine('cardio', id);
-      const isTreadmill = isTreadmillMachine(id);
-      const isCustom = isCustomMachine('cardio', id);
-
-      const cardioLabels = isTreadmill
-        ? ['器材編號', '資產編號', '跑帶停止', '貼心小提醒', '使用說明書']
-        : ['器材編號', '資產編號', '貼心小提醒', '使用說明書'];
-
-      const allNone = CARDIO_STATUS_FIELDS.every((f) => status[f] === '無');
-
-      const borderClass = ev.hasIssue
-        ? 'border-rose-300 bg-rose-50/40 ring-1 ring-rose-200'
-        : ev.checked
-        ? 'border-emerald-300 bg-white'
-        : 'border-slate-200 bg-white';
-
-      const statusBadge = ev.hasIssue
-        ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700">發現異常</span>`
-        : ev.checked
-        ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700">✓ 正常</span>`
-        : `<span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-500">未檢查</span>`;
-
-      const typeTag = isTreadmill
-        ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">跑步機</span>`
-        : `<span class="px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 text-slate-600">心肺機台</span>`;
-
-      const customTag = isCustom
-        ? `<span class="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">新增</span>`
-        : '';
-
-      const togglesHtml = CARDIO_STATUS_FIELDS.map((field) => {
-        const val = status[field]; // '無' | '有' | undefined
-        return `
-          <div class="flex items-center justify-between bg-slate-50 border border-slate-200/80 rounded-xl px-2.5 py-1.5">
-            <span class="text-xs font-bold text-slate-700">${field}</span>
-            <div class="flex items-center bg-slate-200/80 p-0.5 rounded-lg">
-              <button type="button"
-                data-action="set-cardio-status"
-                data-id="${id}"
-                data-field="${field}"
-                data-val="無"
-                class="h-8 px-2.5 rounded-md text-xs font-bold transition ${
-                  val === '無'
-                    ? 'bg-emerald-600 text-white shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }">無</button>
-              <button type="button"
-                data-action="set-cardio-status"
-                data-id="${id}"
-                data-field="${field}"
-                data-val="有"
-                class="h-8 px-2.5 rounded-md text-xs font-bold transition ${
-                  val === '有'
-                    ? 'bg-rose-600 text-white shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }">有</button>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      const stickerHtml = cardioLabels.map((lbl) => {
-        const hasProblem = !!labels[lbl]; // Note: for cardio, V means sticker HAS PROBLEM
-        return `
-          <button type="button"
-            data-action="toggle-cardio-label"
-            data-id="${id}"
-            data-key="${lbl}"
-            class="check-btn h-10 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-between gap-1 ${
-              hasProblem
-                ? 'bg-rose-600 border-rose-600 text-white shadow-xs'
-                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-            }">
-            <span class="truncate">${lbl}</span>
-            <span class="w-5 h-5 rounded-md flex items-center justify-center text-xs font-black shrink-0 ${
-              hasProblem ? 'bg-white/20 text-white' : 'bg-slate-100 border border-slate-300 text-transparent'
-            }">V</span>
-          </button>
-        `;
-      }).join('');
-
-      return `
-        <div class="rounded-2xl border ${borderClass} p-3.5 shadow-2xs transition-colors" data-card-id="${escapeHtml(id)}">
-          <div class="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
-            <div class="flex items-center gap-1.5 flex-wrap">
-              <span class="text-base font-extrabold text-slate-900">心肺 #${escapeHtml(id)}</span>
-              ${typeTag}
-              ${customTag}
-              ${statusBadge}
-            </div>
-            <div class="flex items-center gap-1.5">
-              ${isCustom ? `
-                <button type="button" data-action="delete-custom-machine" data-id="${escapeHtml(id)}"
-                  class="h-9 px-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition" title="移除此自訂器材">
-                  刪除
-                </button>
-              ` : ''}
-              <button type="button"
-                data-action="cardio-all-none"
-                data-id="${escapeHtml(id)}"
-                class="h-9 px-3 rounded-xl text-xs font-bold transition ${
-                  allNone
-                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                    : 'bg-blue-50 text-blue-700 border border-blue-200 active:bg-blue-100'
-                }">
-                ${allNone ? '✓ 已設為無異常' : '一鍵設為無異常'}
-              </button>
-            </div>
-          </div>
-
-          <!-- 6 Functional Status Toggles -->
-          <div class="grid grid-cols-2 gap-2 mt-2.5">
-            ${togglesHtml}
-          </div>
-
-          <!-- Sticker Labels (V = Issue) -->
-          <div class="mt-3 pt-2.5 border-t border-slate-100">
-            <div class="text-[11px] font-bold text-rose-700 mb-1.5">貼紙標籤確認（⚠️ 有問題才打 V）</div>
-            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              ${stickerHtml}
-            </div>
-          </div>
-
-          <!-- Repair Tag & Issue -->
-          <div class="mt-3">
-            <label class="block text-[11px] font-bold text-slate-600 mb-1">維修牌號碼與問題</label>
-            <input type="text"
-              data-action="input-cardio-repair"
-              data-id="${id}"
-              value="${escapeHtml(rec.repairTag)}"
-              placeholder="有異常請填寫維修牌號碼與狀態..."
-              class="w-full h-10 px-3 rounded-xl border text-xs font-medium focus:outline-none focus:border-blue-500 ${
-                rec.repairTag ? 'border-rose-400 bg-rose-50 text-rose-900 font-bold' : 'border-slate-200 bg-slate-50 text-slate-800'
-              }" />
-          </div>
-        </div>
-      `;
     }
 
     function renderAll() {
       updateSummaryStats();
 
-      // Update Tab styles
       document.querySelectorAll('.tab-btn').forEach((btn) => {
-        const isCurrent = btn.dataset.tab === state.activeTab;
-        if (isCurrent) {
-          btn.className = 'tab-btn h-10 rounded-lg text-xs sm:text-sm font-bold transition flex items-center justify-center gap-1 bg-white text-blue-600 shadow-sm';
-        } else {
-          btn.className = 'tab-btn h-10 rounded-lg text-xs sm:text-sm font-bold transition flex items-center justify-center gap-1 text-slate-600 hover:text-slate-900';
-        }
+        const active = btn.dataset.tab === state.activeTab;
+        btn.className = active
+          ? 'tab-btn h-10 rounded-lg text-xs sm:text-sm font-bold transition flex items-center justify-center gap-1 bg-white text-blue-600 shadow-sm'
+          : 'tab-btn h-10 rounded-lg text-xs sm:text-sm font-bold transition flex items-center justify-center gap-1 text-slate-600 hover:text-slate-900';
       });
 
-      // Update Category Action Bar
-      document.getElementById('currentCategoryTitle').textContent = TAB_TITLES[state.activeTab];
+      const instEl = document.getElementById('instructionText');
+      if (instEl) instEl.textContent = TAB_INSTRUCTIONS[state.activeTab] || '';
+
+      const titleEl = document.getElementById('currentCategoryTitle');
+      if (titleEl) titleEl.textContent = TAB_TITLES[state.activeTab] || '';
+
       const customList = state.customMachines[state.activeTab] || [];
       const customBadge = document.getElementById('customCountBadge');
-      if (customList.length > 0) {
-        customBadge.textContent = `含新增 +${customList.length} 台`;
-        customBadge.classList.remove('hidden');
-      } else {
-        customBadge.classList.add('hidden');
+      if (customBadge) {
+        if (customList.length > 0) {
+          customBadge.textContent = `含自訂 +${customList.length} 台`;
+          customBadge.classList.remove('hidden');
+        } else {
+          customBadge.classList.add('hidden');
+        }
       }
 
-      // Reset clear confirmation button visual state if not armed
-      const clearBtn = document.getElementById('btnClearPageData');
-      if (!state.confirmClearArm) {
-        clearBtn.className = 'h-9 px-3 rounded-lg bg-rose-50 hover:bg-rose-100 active:bg-rose-200 border border-rose-200 text-rose-700 text-xs font-bold flex items-center gap-1 transition';
-        clearBtn.innerHTML = '<span>清除本頁資料</span>';
-      }
-
-      // Update Instruction Banner
-      document.getElementById('instructionText').textContent = TAB_INSTRUCTIONS[state.activeTab];
-
-      // Show/Hide weight jump pills & update total count label
       const jumpBar = document.getElementById('weightJumpBar');
-      if (state.activeTab === 'weight') {
-        jumpBar.classList.remove('hidden');
-        const allPill = jumpBar.querySelector('[data-jump="ALL"]');
-        if (allPill) allPill.textContent = `全部 (${getCategoryIds('weight').length})`;
-      } else {
-        jumpBar.classList.add('hidden');
+      if (jumpBar) {
+        jumpBar.classList.toggle('hidden', state.activeTab !== 'weight');
+        jumpBar.querySelectorAll('.jump-pill').forEach((pill) => {
+          const active = pill.dataset.jump === state.weightRange;
+          pill.className = active
+            ? 'jump-pill shrink-0 h-8 px-3 rounded-lg text-xs font-bold bg-blue-600 text-white'
+            : 'jump-pill shrink-0 h-8 px-3 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700';
+        });
       }
 
-      // Render cards
-      const filteredIds = filterIdsForActiveTab();
-      const container = document.getElementById('cardsContainer');
-      const emptyState = document.getElementById('emptyState');
-
-      if (filteredIds.length === 0) {
-        container.innerHTML = '';
-        emptyState.classList.remove('hidden');
-        return;
+      const filterBtn = document.getElementById('filterIssuesBtn');
+      const filterDot = document.getElementById('filterDot');
+      if (filterBtn && filterDot) {
+        filterBtn.className = state.onlyIssues
+          ? 'h-11 px-3.5 rounded-xl bg-rose-50 border border-rose-300 text-xs sm:text-sm font-bold text-rose-700 flex items-center gap-1.5 shrink-0 transition'
+          : 'h-11 px-3.5 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm font-bold text-slate-700 flex items-center gap-1.5 shrink-0 transition';
+        filterDot.className = state.onlyIssues
+          ? 'w-2.5 h-2.5 rounded-full bg-rose-600'
+          : 'w-2.5 h-2.5 rounded-full bg-slate-300';
       }
 
-      emptyState.classList.add('hidden');
-
-      if (state.activeTab === 'weight') {
-        container.innerHTML = filteredIds.map(renderWeightCard).join('');
-      } else if (state.activeTab === 'spin') {
-        container.innerHTML = filteredIds.map(renderSpinCard).join('');
-      } else {
-        container.innerHTML = filteredIds.map(renderCardioCard).join('');
-      }
+      renderCards();
     }
 
-    // ==========================================
-    // 7. EVENT DELEGATION & INTERACTIONS
-    // ==========================================
-    const cardsContainer = document.getElementById('cardsContainer');
+    function filterWeightRange(id) {
+      if (state.weightRange === 'ALL') return true;
+      if (state.weightRange === 'CUSTOM') return isCustomMachine('weight', id);
+      const num = parseInt(id.replace(/\D/g, ''), 10);
+      if (isNaN(num)) return false;
+      if (state.weightRange === 'W01-W50') return num >= 1 && num <= 50;
+      if (state.weightRange === 'W51-W92') return num >= 51 && num <= 92;
+      if (state.weightRange === 'W101-W133') return num >= 101 && num <= 133;
+      if (state.weightRange === 'W141-W179') return num >= 141 && num <= 179;
+      return true;
+    }
 
-    cardsContainer.addEventListener('click', async (e) => {
-      const btn = e.target.closest('[data-action]');
-      if (!btn) return;
-      const action = btn.dataset.action;
-      const id = btn.dataset.id;
+    function renderCards() {
+      const container = document.getElementById('cardsContainer');
+      const emptyState = document.getElementById('emptyState');
+      if (!container) return;
 
-      if (action === 'delete-custom-machine') {
-        const cat = state.activeTab;
-        if (cat === 'cardio') {
-          state.customMachines.cardio = (state.customMachines.cardio || []).filter((item) =>
-            (typeof item === 'string' ? item : item.id) !== id
-          );
-        } else {
-          state.customMachines[cat] = (state.customMachines[cat] || []).filter((item) => item !== id);
+      const cat = state.activeTab;
+      const q = state.searchQuery.trim().toLowerCase();
+      const ids = getCategoryIds(cat).filter((id) => {
+        if (cat === 'weight' && !filterWeightRange(id)) return false;
+        if (state.onlyIssues && !hasRecordIssue(cat, id)) return false;
+        if (q) {
+          const rec = state.records[cat] && state.records[cat][id];
+          const note = (rec && rec.issueText) || '';
+          if (!id.toLowerCase().includes(q) && !note.toLowerCase().includes(q)) return false;
         }
-        delete state.records[cat][id];
-        await saveCustomMachines();
-        scheduleCategorySave(cat, true);
-        renderAll();
-        showToast(`已移除自訂器材「${id}」`);
-      } else if (action === 'toggle-weight-label') {
-        const key = btn.dataset.key;
-        const rec = getRecord('weight', id);
-        rec.labels = rec.labels || {};
-        rec.labels[key] = !rec.labels[key];
-        scheduleCategorySave('weight');
-        renderAll();
-      } else if (action === 'weight-all-v') {
-        const rec = getRecord('weight', id);
-        rec.labels = rec.labels || {};
-        const allChecked = WEIGHT_LABELS.every((l) => !!rec.labels[l]);
-        WEIGHT_LABELS.forEach((l) => {
-          rec.labels[l] = !allChecked;
-        });
-        scheduleCategorySave('weight');
-        renderAll();
-      } else if (action === 'remove-photo') {
-        const rec = getRecord('weight', id);
-        rec.photoData = '';
-        scheduleCategorySave('weight');
-        renderAll();
-      } else if (action === 'toggle-spin-check') {
-        const key = btn.dataset.key;
-        const rec = getRecord('spin', id);
-        rec.checks = rec.checks || {};
-        rec.checks[key] = !rec.checks[key];
-        scheduleCategorySave('spin');
-        renderAll();
-      } else if (action === 'spin-all-v') {
-        const rec = getRecord('spin', id);
-        rec.checks = rec.checks || {};
-        const allChecked = SPIN_ITEMS.every((k) => !!rec.checks[k]);
-        SPIN_ITEMS.forEach((k) => {
-          rec.checks[k] = !allChecked;
-        });
-        scheduleCategorySave('spin');
-        renderAll();
-      } else if (action === 'set-cardio-status') {
-        const field = btn.dataset.field;
-        const val = btn.dataset.val;
-        const rec = getRecord('cardio', id);
-        rec.status = rec.status || {};
-        rec.status[field] = rec.status[field] === val ? '' : val;
-        scheduleCategorySave('cardio');
-        renderAll();
-      } else if (action === 'cardio-all-none') {
-        const rec = getRecord('cardio', id);
-        rec.status = rec.status || {};
-        const allNone = CARDIO_STATUS_FIELDS.every((f) => rec.status[f] === '無');
-        CARDIO_STATUS_FIELDS.forEach((f) => {
-          rec.status[f] = allNone ? '' : '無';
-        });
-        scheduleCategorySave('cardio');
-        renderAll();
-      } else if (action === 'toggle-cardio-label') {
-        const key = btn.dataset.key;
-        const rec = getRecord('cardio', id);
-        rec.labels = rec.labels || {};
-        rec.labels[key] = !rec.labels[key];
-        scheduleCategorySave('cardio');
-        renderAll();
+        return true;
+      });
+
+      container.innerHTML = '';
+      if (ids.length === 0) {
+        if (emptyState) emptyState.classList.remove('hidden');
+        return;
       }
-    });
+      if (emptyState) emptyState.classList.add('hidden');
 
-    cardsContainer.addEventListener('input', (e) => {
-      const input = e.target;
-      const action = input.dataset.action;
-      if (!action) return;
-      const id = input.dataset.id;
+      const subItems =
+        cat === 'weight' ? WEIGHT_LABELS :
+        cat === 'spin' ? SPIN_ITEMS : CARDIO_STATUS_FIELDS;
 
-      if (action === 'input-weight') {
-        const field = input.dataset.field;
-        const rec = getRecord('weight', id);
-        rec[field] = input.value;
-        scheduleCategorySave('weight');
-        updateSummaryStats();
-      } else if (action === 'input-spin-repair') {
-        const rec = getRecord('spin', id);
-        rec.repairTag = input.value;
-        scheduleCategorySave('spin');
-        updateSummaryStats();
-      } else if (action === 'input-cardio-repair') {
-        const rec = getRecord('cardio', id);
-        rec.repairTag = input.value;
-        scheduleCategorySave('cardio');
-        updateSummaryStats();
-      }
-    });
+      ids.forEach((id) => {
+        const rec = getRecord(cat, id);
+        const done = isRecordChecked(cat, id);
+        const issue = hasRecordIssue(cat, id);
+        const isTreadmill = cat === 'cardio' && isTreadmillMachine(id);
+        const itemsForCard = isTreadmill ? [...subItems, '跑帶停止貼紙'] : subItems;
 
-    cardsContainer.addEventListener('change', async (e) => {
-      const input = e.target;
-      if (input.dataset.action === 'photo-weight' && input.files && input.files[0]) {
-        const id = input.dataset.id;
-        try {
-          showToast('正在處理並上傳照片...');
-          const compressed = await compressImageFile(input.files[0]);
-          const rec = getRecord('weight', id);
-          rec.photoData = compressed;
-          scheduleCategorySave('weight');
+        const card = document.createElement('div');
+        card.className = `bg-white rounded-2xl border p-3.5 shadow-2xs transition ${
+          issue ? 'border-rose-300 bg-rose-50/30' :
+          done ? 'border-emerald-300 bg-emerald-50/20' : 'border-slate-200'
+        }`;
+
+        const pillsHtml = itemsForCard.map((label) => {
+          const active = Boolean(rec.checks && rec.checks[label]);
+          return `
+            <button type="button" data-check-label="${label}" class="check-btn px-2.5 py-1.5 rounded-xl text-xs font-bold border transition ${
+              active
+                ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+            }">
+              ${active ? '✓ ' : ''}${label}
+            </button>
+          `;
+        }).join('');
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between gap-2 mb-2.5">
+            <div class="flex items-center gap-2">
+              <span class="px-2.5 py-1 rounded-xl bg-slate-900 text-white text-xs sm:text-sm font-bold">${id}</span>
+              ${isTreadmill ? '<span class="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[11px] font-bold">跑步機</span>' : ''}
+              ${isCustomMachine(cat, id) ? '<span class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[11px] font-bold">自訂</span>' : ''}
+            </div>
+            <button type="button" data-action="check-all-card" class="px-3 py-1.5 rounded-xl text-xs font-bold border transition ${
+              done
+                ? 'bg-emerald-600 text-white border-emerald-600'
+                : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+            }">
+              ${done ? '✓ 已全部確認' : '全打 V'}
+            </button>
+          </div>
+          <div class="flex flex-wrap gap-1.5 mb-2.5">
+            ${pillsHtml}
+          </div>
+          <div>
+            <input type="text" data-action="issue-input" value="${(rec.issueText || '').replace(/"/g, '&quot;')}" placeholder="正常留白；若有異常請填寫狀態..." class="w-full h-9 px-3 rounded-xl border text-xs font-medium focus:outline-none ${
+              issue
+                ? 'border-rose-300 bg-white text-rose-900 focus:border-rose-500'
+                : 'border-slate-200 bg-slate-50 text-slate-800 focus:bg-white focus:border-blue-500'
+            }" />
+          </div>
+        `;
+
+        card.querySelectorAll('[data-check-label]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const label = btn.dataset.checkLabel;
+            rec.checks[label] = !rec.checks[label];
+            rec.checked = itemsForCard.every((l) => Boolean(rec.checks[l]));
+            renderAll();
+            scheduleSave();
+          });
+        });
+
+        card.querySelector('[data-action="check-all-card"]').addEventListener('click', () => {
+          const targetState = !done;
+          itemsForCard.forEach((l) => {
+            rec.checks[l] = targetState;
+          });
+          rec.checked = targetState;
           renderAll();
-          showToast('照片已附加並同步至雲端');
-        } catch (err) {
-          console.error(err);
-          showToast('照片處理失敗，請重試');
-        }
-      }
-    });
+          scheduleSave();
+        });
 
-    // Tab switching
+        card.querySelector('[data-action="issue-input"]').addEventListener('input', (e) => {
+          rec.issueText = e.target.value;
+          updateSummaryStats();
+          scheduleSave();
+        });
+
+        container.appendChild(card);
+      });
+    }
+
+    const datePicker = document.getElementById('datePicker');
+    if (datePicker) {
+      datePicker.value = state.date;
+      datePicker.addEventListener('change', (e) => {
+        if (!e.target.value) return;
+        state.date = e.target.value;
+        subscribeToDateData(state.date);
+      });
+    }
+
+    const inspectorInput = document.getElementById('inspectorInput');
+    if (inspectorInput) {
+      inspectorInput.addEventListener('input', (e) => {
+        state.inspector = e.target.value.trim();
+        scheduleSave();
+      });
+    }
+
     document.querySelectorAll('.tab-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         state.activeTab = btn.dataset.tab;
         state.confirmClearArm = false;
-        clearTimeout(state.confirmClearTimer);
+        const clearBtn = document.getElementById('btnClearPageData');
+        if (clearBtn) clearBtn.textContent = '清除本頁資料';
         renderAll();
       });
     });
 
-    // Clear Current Page Data (Two-tap safe confirmation without browser confirm())
-    const btnClearPageData = document.getElementById('btnClearPageData');
-    btnClearPageData.addEventListener('click', () => {
-      if (!state.confirmClearArm) {
-        state.confirmClearArm = true;
-        btnClearPageData.className = 'h-9 px-3 rounded-lg bg-rose-600 text-white text-xs font-bold flex items-center gap-1 shadow-xs animate-pulse transition';
-        btnClearPageData.innerHTML = '<span>再次點擊確定清空本頁</span>';
-        clearTimeout(state.confirmClearTimer);
-        state.confirmClearTimer = setTimeout(() => {
-          state.confirmClearArm = false;
-          renderAll();
-        }, 3500);
-        return;
-      }
-
-      clearTimeout(state.confirmClearTimer);
-      state.confirmClearArm = false;
-      const cat = state.activeTab;
-      state.records[cat] = {};
-      scheduleCategorySave(cat, true);
-      renderAll();
-      showToast(`已清除「${TAB_TITLES[cat]}」所有檢查紀錄`);
+    document.querySelectorAll('.jump-pill').forEach((pill) => {
+      pill.addEventListener('click', () => {
+        state.weightRange = pill.dataset.jump;
+        renderAll();
+      });
     });
 
-    // Add Equipment Modal Logic
+    const searchInput = document.getElementById('searchInput');
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        state.searchQuery = e.target.value;
+        if (clearSearchBtn) {
+          clearSearchBtn.classList.toggle('hidden', !state.searchQuery);
+        }
+        renderCards();
+      });
+    }
+    if (clearSearchBtn) {
+      clearSearchBtn.addEventListener('click', () => {
+        state.searchQuery = '';
+        if (searchInput) searchInput.value = '';
+        clearSearchBtn.classList.add('hidden');
+        renderCards();
+      });
+    }
+
+    const filterIssuesBtn = document.getElementById('filterIssuesBtn');
+    if (filterIssuesBtn) {
+      filterIssuesBtn.addEventListener('click', () => {
+        state.onlyIssues = !state.onlyIssues;
+        renderAll();
+      });
+    }
+
+    const btnClearPageData = document.getElementById('btnClearPageData');
+    if (btnClearPageData) {
+      btnClearPageData.addEventListener('click', () => {
+        if (!state.confirmClearArm) {
+          state.confirmClearArm = true;
+          btnClearPageData.textContent = '再按一次確認清除';
+          clearTimeout(state.confirmClearTimer);
+          state.confirmClearTimer = setTimeout(() => {
+            state.confirmClearArm = false;
+            btnClearPageData.textContent = '清除本頁資料';
+          }, 3000);
+          return;
+        }
+        state.confirmClearArm = false;
+        btnClearPageData.textContent = '清除本頁資料';
+        state.records[state.activeTab] = {};
+        renderAll();
+        scheduleSave();
+        showToast('已清除目前分頁巡檢紀錄');
+      });
+    }
+
     const addEquipModal = document.getElementById('addEquipModal');
     const newEquipIdInput = document.getElementById('newEquipIdInput');
     const addTreadmillOptionWrap = document.getElementById('addTreadmillOptionWrap');
     const newEquipIsTreadmill = document.getElementById('newEquipIsTreadmill');
 
     document.getElementById('btnOpenAddModal').addEventListener('click', () => {
-      const cat = state.activeTab;
-      document.getElementById('addModalTitle').textContent = `新增器材至「${TAB_TITLES[cat]}」`;
       newEquipIdInput.value = '';
       newEquipIsTreadmill.checked = false;
-      if (cat === 'cardio') {
-        addTreadmillOptionWrap.classList.remove('hidden');
-        newEquipIdInput.placeholder = '例如：99、100、階梯機...';
-      } else if (cat === 'spin') {
-        addTreadmillOptionWrap.classList.add('hidden');
-        newEquipIdInput.placeholder = '例如：40、備用車2...';
-      } else {
-        addTreadmillOptionWrap.classList.add('hidden');
-        newEquipIdInput.placeholder = '例如：W180、W181...';
-      }
+      addTreadmillOptionWrap.classList.toggle('hidden', state.activeTab !== 'cardio');
       addEquipModal.classList.remove('hidden');
       addEquipModal.classList.add('flex');
-      setTimeout(() => newEquipIdInput.focus(), 50);
+      newEquipIdInput.focus();
     });
 
-    function closeAddEquipModal() {
+    const closeAddModal = () => {
       addEquipModal.classList.add('hidden');
       addEquipModal.classList.remove('flex');
-    }
+    };
+    document.getElementById('closeAddModal').addEventListener('click', closeAddModal);
+    document.getElementById('cancelAddModal').addEventListener('click', closeAddModal);
 
-    document.getElementById('closeAddModal').addEventListener('click', closeAddEquipModal);
-    document.getElementById('cancelAddModal').addEventListener('click', closeAddEquipModal);
-
-    async function handleConfirmAddEquip() {
-      const rawId = newEquipIdInput.value.trim();
-      if (!rawId) {
+    document.getElementById('confirmAddEquipBtn').addEventListener('click', () => {
+      const val = newEquipIdInput.value.trim();
+      if (!val) {
         showToast('請輸入器材編號或名稱');
-        newEquipIdInput.focus();
         return;
       }
-
       const cat = state.activeTab;
-      const existingIds = getCategoryIds(cat);
-      if (existingIds.includes(rawId)) {
-        showToast(`「${rawId}」已存在於${TAB_TITLES[cat]}清單中`);
-        newEquipIdInput.focus();
+      if (getCategoryIds(cat).includes(val)) {
+        showToast('此器材編號已存在');
         return;
       }
-
       if (cat === 'cardio') {
-        state.customMachines.cardio = state.customMachines.cardio || [];
-        state.customMachines.cardio.push({
-          id: rawId,
-          isTreadmill: newEquipIsTreadmill.checked,
-        });
+        state.customMachines.cardio.push({ id: val, isTreadmill: newEquipIsTreadmill.checked });
       } else {
-        state.customMachines[cat] = state.customMachines[cat] || [];
-        state.customMachines[cat].push(rawId);
+        state.customMachines[cat].push(val);
       }
-
-      closeAddEquipModal();
+      saveCustomMachines();
+      closeAddModal();
       renderAll();
-      await saveCustomMachines();
-      showToast(`已新增「${rawId}」至${TAB_TITLES[cat]}`);
-    }
-
-    document.getElementById('confirmAddEquipBtn').addEventListener('click', handleConfirmAddEquip);
-    newEquipIdInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleConfirmAddEquip();
-      }
+      showToast(`已新增器材「${val}」`);
     });
-
-    // Weight range quick jump pills
-    document.querySelectorAll('.jump-pill').forEach((pill) => {
-      pill.addEventListener('click', () => {
-        state.weightRange = pill.dataset.jump;
-        document.querySelectorAll('.jump-pill').forEach((p) => {
-          if (p.dataset.jump === state.weightRange) {
-            p.className = 'jump-pill shrink-0 h-8 px-3 rounded-lg text-xs font-bold bg-blue-600 text-white';
-          } else {
-            p.className = 'jump-pill shrink-0 h-8 px-3 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700';
-          }
-        });
-        renderAll();
-      });
-    });
-
-    // Date Picker
-    const datePicker = document.getElementById('datePicker');
-    datePicker.value = state.date;
-    datePicker.addEventListener('change', (e) => {
-      if (e.target.value) {
-        state.date = e.target.value;
-        subscribeToDate(state.date);
-      }
-    });
-
-    // Inspector Name (persisted in localStorage for convenience)
-    const inspectorInput = document.getElementById('inspectorInput');
-    try {
-      const savedName = localStorage.getItem('gym_inspector_name');
-      if (savedName) {
-        state.inspector = savedName;
-        inspectorInput.value = savedName;
-      }
-    } catch (_) {}
-
-    inspectorInput.addEventListener('input', (e) => {
-      state.inspector = e.target.value;
-      try {
-        localStorage.setItem('gym_inspector_name', state.inspector);
-      } catch (_) {}
-    });
-
-    // Search Input
-    const searchInput = document.getElementById('searchInput');
-    const clearSearchBtn = document.getElementById('clearSearchBtn');
-    searchInput.addEventListener('input', (e) => {
-      state.searchQuery = e.target.value;
-      clearSearchBtn.classList.toggle('hidden', !state.searchQuery);
-      renderAll();
-    });
-
-    clearSearchBtn.addEventListener('click', () => {
-      state.searchQuery = '';
-      searchInput.value = '';
-      clearSearchBtn.classList.add('hidden');
-      renderAll();
-    });
-
-    // Only Issues Filter
-    const filterIssuesBtn = document.getElementById('filterIssuesBtn');
-    const filterDot = document.getElementById('filterDot');
-    filterIssuesBtn.addEventListener('click', () => {
-      state.onlyIssues = !state.onlyIssues;
-      if (state.onlyIssues) {
-        filterIssuesBtn.className = 'h-11 px-3.5 rounded-xl bg-rose-600 border border-rose-600 text-xs sm:text-sm font-bold text-white flex items-center gap-1.5 shrink-0 transition shadow-xs';
-        filterDot.className = 'w-2.5 h-2.5 rounded-full bg-white';
-      } else {
-        filterIssuesBtn.className = 'h-11 px-3.5 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm font-bold text-slate-700 flex items-center gap-1.5 shrink-0 transition';
-        filterDot.className = 'w-2.5 h-2.5 rounded-full bg-slate-300';
-      }
-      renderAll();
-    });
-
-    // ==========================================
-    // 8. CSV / EXCEL REPORT EXPORT
-    // ==========================================
-    function csvEscape(val) {
-      const s = val == null ? '' : String(val);
-      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-        return `"${s.replace(/"/g, '""')}"`;
-      }
-      return s;
-    }
 
     document.getElementById('btnExport').addEventListener('click', () => {
-      const weightIds = getCategoryIds('weight');
-      const spinIds = getCategoryIds('spin');
-      const cardioIds = getCategoryIds('cardio');
+      const headers = ['巡檢日期', '巡檢人員', '區域分類', '器材編號', '已確認打V', '細項勾選狀態', '異常備註'];
+      const rows = [headers];
+      const catLabels = { weight: '重訓器材', spin: '飛輪器材', cardio: '心肺器材' };
 
-      const lines = [];
-      lines.push(`健身房器材標籤巡檢報表,巡檢日期：${state.date},巡檢人員：${state.inspector || '未填寫'}`);
-      lines.push('');
-
-      // Section 1: Weight Training
-      lines.push(`【一、重訓器材檢查表 (${weightIds.length}台)】`);
-      lines.push(['器材編號', '器材故障', '皮革破裂', '把手', '貼紙-器材編號', '貼紙-資產編號', '貼紙-貼心小提醒', '貼紙-使用說明書', '維修牌號碼', '異常狀態備註', '有無照片'].join(','));
-      weightIds.forEach((id) => {
-        const r = state.records.weight[id] || {};
-        const l = r.labels || {};
-        lines.push([
-          id,
-          r.fault || '',
-          r.leather || '',
-          r.handle || '',
-          l['器材編號'] ? 'V' : '',
-          l['資產編號'] ? 'V' : '',
-          l['貼心小提醒'] ? 'V' : '',
-          l['使用說明書'] ? 'V' : '',
-          r.repairTag || '',
-          r.note || '',
-          r.photoData ? '有照片' : '',
-        ].map(csvEscape).join(','));
+      ['weight', 'spin', 'cardio'].forEach((cat) => {
+        getCategoryIds(cat).forEach((id) => {
+          const rec = state.records[cat] && state.records[cat][id];
+          const checkedItems = rec && rec.checks
+            ? Object.entries(rec.checks).filter(([, v]) => v).map(([k]) => k).join('、')
+            : '';
+          rows.push([
+            state.date,
+            state.inspector || '',
+            catLabels[cat],
+            id,
+            isRecordChecked(cat, id) ? 'V' : '',
+            checkedItems,
+            (rec && rec.issueText) || '',
+          ]);
+        });
       });
 
-      lines.push('');
-      // Section 2: Spin Bikes
-      lines.push(`【二、飛輪器材檢查表 (${spinIds.length}台)】`);
-      lines.push(['飛輪編號', '貼心小提醒', '資產編號', '器材編號', '旋鈕', '座椅調整', '間距對齊', '維修牌號碼與問題'].join(','));
-      spinIds.forEach((id) => {
-        const r = state.records.spin[id] || {};
-        const c = r.checks || {};
-        lines.push([
-          id,
-          c['貼心小提醒'] ? 'V' : '',
-          c['資產編號'] ? 'V' : '',
-          c['器材編號'] ? 'V' : '',
-          c['旋鈕'] ? 'V' : '',
-          c['座椅調整'] ? 'V' : '',
-          c['間距對齊'] ? 'V' : '',
-          r.repairTag || '',
-        ].map(csvEscape).join(','));
-      });
-
-      lines.push('');
-      // Section 3: Cardio Equipment
-      lines.push(`【三、心肺器材檢查表 (${cardioIds.length}台) - 標籤有問題打V】`);
-      lines.push(['器材編號', '機型', '耳機孔', '電視狀況', '坡度鍵', '速度鍵', '插座凹陷', '心肺異音', '標籤問題-器材編號', '標籤問題-資產編號', '標籤問題-跑帶停止', '標籤問題-貼心小提醒', '標籤問題-使用說明書', '維修牌號碼與問題'].join(','));
-      cardioIds.forEach((id) => {
-        const r = state.records.cardio[id] || {};
-        const s = r.status || {};
-        const l = r.labels || {};
-        const isTreadmill = isTreadmillMachine(id);
-        lines.push([
-          id,
-          isTreadmill ? '跑步機' : '心肺機台',
-          s['耳機孔'] || '',
-          s['電視狀況'] || '',
-          s['坡度鍵'] || '',
-          s['速度鍵'] || '',
-          s['插座凹陷'] || '',
-          s['心肺異音'] || '',
-          l['器材編號'] ? 'V' : '',
-          l['資產編號'] ? 'V' : '',
-          isTreadmill ? (l['跑帶停止'] ? 'V' : '') : '-',
-          l['貼心小提醒'] ? 'V' : '',
-          l['使用說明書'] ? 'V' : '',
-          r.repairTag || '',
-        ].map(csvEscape).join(','));
-      });
-
-      // UTF-8 BOM for proper Traditional Chinese display in Excel
-      const csvContent = '\uFEFF' + lines.join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const csv = '\uFEFF' + rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `重訓飛輪心肺器材標籤檢查_${state.date}.csv`;
-      document.body.appendChild(a);
+      a.download = `健身房器材巡檢報表_${state.date}.csv`;
       a.click();
-      document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      showToast('已匯出 Excel (CSV) 檢查報表');
+      showToast('已匯出 CSV 報表');
     });
 
-    // ==========================================
-    // 9. SHARE MODAL & UTILITIES
-    // ==========================================
     const shareModal = document.getElementById('shareModal');
     const shareUrlInput = document.getElementById('shareUrlInput');
     const copyFeedback = document.getElementById('copyFeedback');
@@ -1739,13 +1068,12 @@
       shareModal.classList.add('flex');
     });
 
-    function closeModal() {
+    const closeShare = () => {
       shareModal.classList.add('hidden');
       shareModal.classList.remove('flex');
-    }
-
-    document.getElementById('closeShareModal').addEventListener('click', closeModal);
-    document.getElementById('doneShareModal').addEventListener('click', closeModal);
+    };
+    document.getElementById('closeShareModal').addEventListener('click', closeShare);
+    document.getElementById('doneShareModal').addEventListener('click', closeShare);
 
     document.getElementById('copyShareUrlBtn').addEventListener('click', () => {
       shareUrlInput.select();
@@ -1754,14 +1082,60 @@
         document.execCommand('copy');
         copyFeedback.classList.remove('hidden');
       } catch (err) {
-        showToast('請長按網址進行複製');
+        showToast('複製失敗，請手動選取網址複製');
       }
     });
 
-    // Scroll to top button
+    const cloudConfigModal = document.getElementById('cloudConfigModal');
+    const firebaseConfigInput = document.getElementById('firebaseConfigInput');
+
+    document.getElementById('btnCloudConfig').addEventListener('click', () => {
+      try {
+        firebaseConfigInput.value = localStorage.getItem('gym_custom_firebase_config') || '';
+      } catch (_) {}
+      cloudConfigModal.classList.remove('hidden');
+      cloudConfigModal.classList.add('flex');
+    });
+
+    const closeCloudModal = () => {
+      cloudConfigModal.classList.add('hidden');
+      cloudConfigModal.classList.remove('flex');
+    };
+    document.getElementById('closeCloudModal').addEventListener('click', closeCloudModal);
+
+    document.getElementById('clearCloudConfigBtn').addEventListener('click', () => {
+      try {
+        localStorage.removeItem('gym_custom_firebase_config');
+      } catch (_) {}
+      firebaseConfigInput.value = '';
+      showToast('已清除自訂設定，正在重新連線...');
+      initFirebase();
+    });
+
+    document.getElementById('saveCloudConfigBtn').addEventListener('click', () => {
+      const raw = firebaseConfigInput.value.trim();
+      if (!raw) {
+        showToast('請貼上有效的 Firebase 設定 JSON');
+        return;
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || !parsed.apiKey) {
+          showToast('設定內容缺少 apiKey，請確認格式');
+          return;
+        }
+        localStorage.setItem('gym_custom_firebase_config', JSON.stringify(parsed));
+        closeCloudModal();
+        showToast('設定已儲存，正在重新連線雲端...');
+        initFirebase();
+      } catch (err) {
+        showToast('JSON 格式錯誤，請確認括號與雙引號是否完整');
+      }
+    });
+
     const scrollTopBtn = document.getElementById('scrollTopBtn');
     window.addEventListener('scroll', () => {
-      if (window.scrollY > 400) {
+      if (window.scrollY > 300) {
         scrollTopBtn.classList.remove('opacity-0', 'pointer-events-none');
       } else {
         scrollTopBtn.classList.add('opacity-0', 'pointer-events-none');
@@ -1772,18 +1146,17 @@
     });
 
     let toastTimer = null;
-    function showToast(msg) {
-      const box = document.getElementById('toastBox');
-      box.textContent = msg;
-      box.classList.remove('opacity-0');
-      if (toastTimer) clearTimeout(toastTimer);
+    function showToast(message) {
+      const toastBox = document.getElementById('toastBox');
+      if (!toastBox) return;
+      toastBox.textContent = message;
+      toastBox.classList.remove('opacity-0');
+      clearTimeout(toastTimer);
       toastTimer = setTimeout(() => {
-        box.classList.add('opacity-0');
+        toastBox.classList.add('opacity-0');
       }, 2400);
     }
 
-    // Start app
-    renderAll();
     initFirebase();
   </script>
 </body>
